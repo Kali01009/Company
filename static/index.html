@@ -1,261 +1,162 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Volatility Index - MT5 Style Chart</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@3.5.0/dist/chartjs-chart-financial.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
-
-<style>
-  body {
-    background-color: #1e1e2f;
-    color: #ccc;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    height: 100vh;
-  }
-  h2 {
-    margin: 15px 0 5px;
-  }
-  #chart-container {
-    width: 95vw;
-    max-width: 900px;
-    flex-grow: 1;
-  }
-  canvas {
-    background-color: #121227;
-    border-radius: 6px;
-    box-shadow: 0 0 15px rgba(0,0,0,0.7);
-  }
-  #buttons {
-    margin-bottom: 10px;
-  }
-  button {
-    background-color: #333;
-    color: #ccc;
-    border: none;
-    padding: 8px 16px;
-    margin: 0 6px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-  }
-  button.active {
-    background-color: #4caf50;
-    color: white;
-  }
-  button:hover:not(.active) {
-    background-color: #555;
-  }
-</style>
+  <meta charset="UTF-8">
+  <title>MT5-Style 1m Candlestick Chart</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+  <style>
+    body {
+      margin: 0;
+      background-color: #0f0f1b;
+      color: #ccc;
+      font-family: Arial, sans-serif;
+    }
+    #controls {
+      text-align: center;
+      padding: 10px;
+    }
+    button {
+      background: #222;
+      color: #fff;
+      border: 1px solid #555;
+      padding: 6px 12px;
+      margin: 0 5px;
+      cursor: pointer;
+    }
+    button.active {
+      background: #4caf50;
+    }
+    canvas {
+      background: #121227;
+      display: block;
+      margin: 0 auto;
+    }
+  </style>
 </head>
 <body>
 
-<h2>Volatility Index <span id="index-label">R_75</span></h2>
-<div id="buttons">
+<div id="controls">
   <button id="btn_R_75" class="active">R_75</button>
   <button id="btn_R_25">R_25</button>
 </div>
-<div id="chart-container">
-  <canvas id="chart"></canvas>
-</div>
+
+<canvas id="chart" width="1000" height="500"></canvas>
 
 <script>
-  // Chart.js candlestick chart setup
-  const ctx = document.getElementById('chart').getContext('2d');
-  const chart = new Chart(ctx, {
-    type: 'candlestick',
-    data: {
-      datasets: [{
-        label: 'Volatility Index',
-        data: []
-      }]
-    },
-    options: {
-      responsive: true,
-      animation: false,
-      plugins: {
-        legend: { display: false },
-        zoom: {
-          zoom: {
-            wheel: { enabled: true },
-            pinch: { enabled: true },
-            mode: 'x',
-          },
-          pan: {
-            enabled: true,
-            mode: 'x',
-          }
-        }
-      },
-      scales: {
-        x: {
-          type: 'time',
-          time: {
-            tooltipFormat: 'MMM dd, HH:mm:ss',
-            unit: 'minute',
-            displayFormats: { minute: 'HH:mm' }
-          },
-          ticks: { color: '#ccc' },
-          grid: { color: '#333' }
+let socket;
+let currentIndex = "R_75";
+let candles = [];
+let currentCandle = null;
+
+const chart = new Chart(document.getElementById("chart").getContext("2d"), {
+  type: 'candlestick',
+  data: {
+    datasets: [{
+      label: 'Candlestick',
+      data: []
+    }]
+  },
+  options: {
+    responsive: true,
+    animation: false,
+    scales: {
+      x: {
+        type: 'time',
+        time: {
+          unit: 'minute',
+          tooltipFormat: 'PPpp'
         },
-        y: {
-          ticks: { color: '#ccc' },
-          grid: { color: '#333' },
-          beginAtZero: false,
-        }
+        ticks: { color: '#aaa' },
+        grid: { color: '#333' }
+      },
+      y: {
+        ticks: { color: '#aaa' },
+        grid: { color: '#333' }
       }
-    }
-  });
-
-  // Candle aggregation state
-  let candles = [];
-  let currentCandle = null;
-  let currentIndex = 'R_75';
-  let socket = null;
-
-  // Helper: get minute bucket
-  function getMinuteKey(epochSeconds) {
-    return Math.floor(epochSeconds / 60);
-  }
-
-  // Reset candles and chart
-  function resetCandles() {
-    candles = [];
-    currentCandle = null;
-    chart.data.datasets[0].data = [];
-    chart.update();
-  }
-
-  // Aggregate tick into OHLC candle
-  function aggregateTick(tick) {
-    const epoch = tick.epoch;
-    const price = tick.quote;
-    const minuteKey = getMinuteKey(epoch);
-
-    if (!currentCandle || currentCandle.minuteKey !== minuteKey) {
-      // Push previous candle
-      if (currentCandle) {
-        candles.push({
-          x: new Date(currentCandle.minuteKey * 60 * 1000),
-          o: currentCandle.open,
-          h: currentCandle.high,
-          l: currentCandle.low,
-          c: currentCandle.close
-        });
-        if (candles.length > 30) candles.shift();
-      }
-      // Start new candle
-      currentCandle = {
-        minuteKey,
-        open: price,
-        high: price,
-        low: price,
-        close: price
-      };
-    } else {
-      // Update candle
-      currentCandle.high = Math.max(currentCandle.high, price);
-      currentCandle.low = Math.min(currentCandle.low, price);
-      currentCandle.close = price;
+    },
+    plugins: {
+      legend: { display: false }
     }
   }
+});
 
-  // Finalize last candle before disconnect/reconnect
-  function finalizeCandle() {
+function getMinuteKey(epoch) {
+  return Math.floor(epoch / 60);
+}
+
+function aggregateTick(tick) {
+  const price = tick.quote;
+  const epoch = tick.epoch;
+  const minuteKey = getMinuteKey(epoch);
+
+  if (!currentCandle || currentCandle.minute !== minuteKey) {
     if (currentCandle) {
       candles.push({
-        x: new Date(currentCandle.minuteKey * 60 * 1000),
+        x: new Date(currentCandle.minute * 60 * 1000),
         o: currentCandle.open,
         h: currentCandle.high,
         l: currentCandle.low,
         c: currentCandle.close
       });
-      if (candles.length > 30) candles.shift();
-      currentCandle = null;
-    }
-  }
-
-  // Connect to WebSocket for given index
-  function connectWS(index) {
-    if (socket) {
-      socket.close();
-      finalizeCandle();
-      resetCandles();
-    }
-
-    currentIndex = index;
-    document.getElementById('index-label').textContent = index;
-
-    const protocol = location.protocol === "https:" ? "wss" : "ws";
-    socket = new WebSocket(`${protocol}://${location.host}/ws/${index}`);
-
-    socket.onopen = () => {
-      console.log(`WebSocket connected for ${index}`);
-    };
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.tick) {
-        aggregateTick(data.tick);
-
-        // Compose data with finalized candles + current
-        const dataSet = [...candles];
-        if (currentCandle) {
-          dataSet.push({
-            x: new Date(currentCandle.minuteKey * 60 * 1000),
-            o: currentCandle.open,
-            h: currentCandle.high,
-            l: currentCandle.low,
-            c: currentCandle.close
-          });
-        }
-        chart.data.datasets[0].data = dataSet;
-        chart.update('none');
-      }
-    };
-
-    socket.onerror = (e) => {
-      console.error("WebSocket error:", e);
-    };
-
-    socket.onclose = (e) => {
-      console.log("WebSocket closed:", e.reason);
-      finalizeCandle();
+      if (candles.length > 50) candles.shift();
+      chart.data.datasets[0].data = candles;
       chart.update();
+    }
+    currentCandle = {
+      minute: minuteKey,
+      open: price,
+      high: price,
+      low: price,
+      close: price
     };
+  } else {
+    currentCandle.high = Math.max(currentCandle.high, price);
+    currentCandle.low = Math.min(currentCandle.low, price);
+    currentCandle.close = price;
   }
+}
 
-  // Setup toggle buttons
-  document.getElementById('btn_R_75').addEventListener('click', () => {
-    if (currentIndex !== 'R_75') {
-      setActiveButton('btn_R_75');
-      connectWS('R_75');
+function connect(index) {
+  if (socket) socket.close();
+  candles = [];
+  currentCandle = null;
+  chart.data.datasets[0].data = [];
+  chart.update();
+
+  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+  socket = new WebSocket(`${protocol}://${location.host}/ws/${index}`);
+
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.tick) {
+      aggregateTick(data.tick);
     }
-  });
+  };
+}
 
-  document.getElementById('btn_R_25').addEventListener('click', () => {
-    if (currentIndex !== 'R_25') {
-      setActiveButton('btn_R_25');
-      connectWS('R_25');
-    }
-  });
-
-  function setActiveButton(id) {
-    document.getElementById('btn_R_75').classList.remove('active');
-    document.getElementById('btn_R_25').classList.remove('active');
-    document.getElementById(id).classList.add('active');
+document.getElementById("btn_R_75").addEventListener("click", () => {
+  if (currentIndex !== "R_75") {
+    currentIndex = "R_75";
+    setActive("btn_R_75");
+    connect("R_75");
   }
+});
+document.getElementById("btn_R_25").addEventListener("click", () => {
+  if (currentIndex !== "R_25") {
+    currentIndex = "R_25";
+    setActive("btn_R_25");
+    connect("R_25");
+  }
+});
+function setActive(id) {
+  document.getElementById("btn_R_75").classList.remove("active");
+  document.getElementById("btn_R_25").classList.remove("active");
+  document.getElementById(id).classList.add("active");
+}
 
-  // Start first connection
-  connectWS(currentIndex);
+connect(currentIndex);
 </script>
-
 </body>
 </html>
