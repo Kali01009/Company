@@ -1,162 +1,81 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>MT5-Style 1m Candlestick Chart</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-  <style>
-    body {
-      margin: 0;
-      background-color: #0f0f1b;
-      color: #ccc;
-      font-family: Arial, sans-serif;
-    }
-    #controls {
-      text-align: center;
-      padding: 10px;
-    }
-    button {
-      background: #222;
-      color: #fff;
-      border: 1px solid #555;
-      padding: 6px 12px;
-      margin: 0 5px;
-      cursor: pointer;
-    }
-    button.active {
-      background: #4caf50;
-    }
-    canvas {
-      background: #121227;
-      display: block;
-      margin: 0 auto;
-    }
-  </style>
+    <title>Volatility Index Candlestick Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
 </head>
 <body>
+    <h2>Candlestick Chart - Volatility Index 75</h2>
+    <canvas id="chart" width="800" height="400"></canvas>
 
-<div id="controls">
-  <button id="btn_R_75" class="active">R_75</button>
-  <button id="btn_R_25">R_25</button>
-</div>
+    <script>
+        const index = "R_75";
+        const socket = new WebSocket(`ws://${location.host}/ws/${index}`);
 
-<canvas id="chart" width="1000" height="500"></canvas>
+        const ctx = document.getElementById('chart').getContext('2d');
+        let candles = [];
 
-<script>
-let socket;
-let currentIndex = "R_75";
-let candles = [];
-let currentCandle = null;
+        const chart = new Chart(ctx, {
+            type: 'candlestick',
+            data: {
+                datasets: [{
+                    label: `${index} 1m`,
+                    data: candles
+                }]
+            },
+            options: {
+                parsing: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute'
+                        }
+                    }
+                }
+            }
+        });
 
-const chart = new Chart(document.getElementById("chart").getContext("2d"), {
-  type: 'candlestick',
-  data: {
-    datasets: [{
-      label: 'Candlestick',
-      data: []
-    }]
-  },
-  options: {
-    responsive: true,
-    animation: false,
-    scales: {
-      x: {
-        type: 'time',
-        time: {
-          unit: 'minute',
-          tooltipFormat: 'PPpp'
-        },
-        ticks: { color: '#aaa' },
-        grid: { color: '#333' }
-      },
-      y: {
-        ticks: { color: '#aaa' },
-        grid: { color: '#333' }
-      }
-    },
-    plugins: {
-      legend: { display: false }
-    }
-  }
-});
+        socket.onmessage = function(event) {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "historical") {
+                candles = msg.candles.map(c => ({
+                    x: new Date(c.epoch * 1000),
+                    o: c.open,
+                    h: c.high,
+                    l: c.low,
+                    c: c.close
+                }));
+                chart.data.datasets[0].data = candles;
+                chart.update();
+            } else if (msg.type === "tick") {
+                const tick = msg.tick.tick;
+                const tickTime = new Date(tick.epoch * 1000);
+                const last = candles[candles.length - 1];
 
-function getMinuteKey(epoch) {
-  return Math.floor(epoch / 60);
-}
+                // If still in same minute, update current candle
+                if (last && Math.floor(tickTime.getTime() / 60000) === Math.floor(last.x.getTime() / 60000)) {
+                    last.h = Math.max(last.h, tick.quote);
+                    last.l = Math.min(last.l, tick.quote);
+                    last.c = tick.quote;
+                } else {
+                    // Else push new candle
+                    candles.push({
+                        x: tickTime,
+                        o: tick.quote,
+                        h: tick.quote,
+                        l: tick.quote,
+                        c: tick.quote
+                    });
 
-function aggregateTick(tick) {
-  const price = tick.quote;
-  const epoch = tick.epoch;
-  const minuteKey = getMinuteKey(epoch);
+                    if (candles.length > 100) candles.shift();
+                }
 
-  if (!currentCandle || currentCandle.minute !== minuteKey) {
-    if (currentCandle) {
-      candles.push({
-        x: new Date(currentCandle.minute * 60 * 1000),
-        o: currentCandle.open,
-        h: currentCandle.high,
-        l: currentCandle.low,
-        c: currentCandle.close
-      });
-      if (candles.length > 50) candles.shift();
-      chart.data.datasets[0].data = candles;
-      chart.update();
-    }
-    currentCandle = {
-      minute: minuteKey,
-      open: price,
-      high: price,
-      low: price,
-      close: price
-    };
-  } else {
-    currentCandle.high = Math.max(currentCandle.high, price);
-    currentCandle.low = Math.min(currentCandle.low, price);
-    currentCandle.close = price;
-  }
-}
-
-function connect(index) {
-  if (socket) socket.close();
-  candles = [];
-  currentCandle = null;
-  chart.data.datasets[0].data = [];
-  chart.update();
-
-  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  socket = new WebSocket(`${protocol}://${location.host}/ws/${index}`);
-
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.tick) {
-      aggregateTick(data.tick);
-    }
-  };
-}
-
-document.getElementById("btn_R_75").addEventListener("click", () => {
-  if (currentIndex !== "R_75") {
-    currentIndex = "R_75";
-    setActive("btn_R_75");
-    connect("R_75");
-  }
-});
-document.getElementById("btn_R_25").addEventListener("click", () => {
-  if (currentIndex !== "R_25") {
-    currentIndex = "R_25";
-    setActive("btn_R_25");
-    connect("R_25");
-  }
-});
-function setActive(id) {
-  document.getElementById("btn_R_75").classList.remove("active");
-  document.getElementById("btn_R_25").classList.remove("active");
-  document.getElementById(id).classList.add("active");
-}
-
-connect(currentIndex);
-</script>
+                chart.update();
+            }
+        };
+    </script>
 </body>
 </html>
