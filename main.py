@@ -3,6 +3,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import websockets
 import json
+import os
+import uvicorn
 
 app = FastAPI()
 
@@ -21,10 +23,14 @@ async def websocket_endpoint(websocket: WebSocket, index: str):
     async for tick in subscribe_ticks(index):
         await websocket.send_text(tick)
 
-# Serve static files in ./static folder
+# Serve static files from the ./static folder
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def root():
-    # Redirect root URL to static/index.html
+    # Redirect root path to /static/index.html
     return RedirectResponse(url="/static/index.html")
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))  # Use Render's PORT or default 8000
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
