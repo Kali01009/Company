@@ -1,51 +1,121 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Volatility Index Realtime</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Volatility Index - MT5 Style Chart</title>
+
+<!-- Chart.js core -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Chart.js Financial plugin -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@3.5.0/dist/chartjs-chart-financial.min.js"></script>
+
+<style>
+  body {
+    background-color: #1e1e2f;
+    color: #ccc;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+  }
+  h2 {
+    margin: 20px 0 5px;
+  }
+  #chart-container {
+    width: 95vw;
+    max-width: 900px;
+    flex-grow: 1;
+  }
+  canvas {
+    background-color: #121227;
+    border-radius: 6px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.7);
+  }
+</style>
 </head>
 <body>
-    <h2>Volatility Index <span id="index">R_75</span></h2>
-    <canvas id="chart" width="600" height="400"></canvas>
+<h2>Volatility Index <span id="index">R_75</span></h2>
+<div id="chart-container">
+  <canvas id="chart"></canvas>
+</div>
 
-    <script>
-        const index = "R_75";
-        // Dynamically choose ws or wss based on current protocol & host
-        const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${index}`);
+<script>
+  const index = "R_75";
+  const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${index}`);
 
-        const ctx = document.getElementById('chart').getContext('2d');
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Price',
-                    data: [],
-                    borderColor: 'blue',
-                    borderWidth: 1,
-                    fill: false,
-                }]
-            },
-            options: {
-                scales: {
-                    x: { display: false },
-                    y: { beginAtZero: false }
-                }
-            }
-        });
+  // Configure chart with candlestick type
+  const ctx = document.getElementById('chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'candlestick',
+    data: {
+      datasets: [{
+        label: 'Volatility Index',
+        data: [], // candlestick data will be pushed here
+        color: {
+          up: '#4caf50',
+          down: '#f44336',
+          unchanged: '#999',
+        },
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: {
+            tooltipFormat: 'HH:mm:ss',
+            unit: 'second',
+            displayFormats: { second: 'HH:mm:ss' }
+          },
+          ticks: {
+            color: '#ccc'
+          },
+          grid: {
+            color: '#333'
+          }
+        },
+        y: {
+          ticks: { color: '#ccc' },
+          grid: { color: '#333' },
+          beginAtZero: false,
+        }
+      }
+    }
+  });
 
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.tick) {
-                chart.data.labels.push(new Date(data.tick.epoch * 1000).toLocaleTimeString());
-                chart.data.datasets[0].data.push(data.tick.quote);
-                if (chart.data.labels.length > 30) {
-                    chart.data.labels.shift();
-                    chart.data.datasets[0].data.shift();
-                }
-                chart.update();
-            }
-        };
-    </script>
+  // Helper to create candlestick from tick data
+  function tickToCandle(tick) {
+    const time = tick.epoch * 1000;
+    const price = tick.quote;
+    // For simplicity, use open=close=high=low = quote (single price tick)
+    return { x: time, o: price, h: price, l: price, c: price };
+  }
+
+  // Buffer for candlesticks, limited to 30 candles
+  const candles = [];
+
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.tick) {
+      const candle = tickToCandle(data.tick);
+      candles.push(candle);
+      if (candles.length > 30) candles.shift();
+      chart.data.datasets[0].data = candles;
+      chart.update('none'); // no animation
+    }
+  };
+
+  socket.onerror = (err) => {
+    console.error('WebSocket error:', err);
+  };
+</script>
 </body>
 </html>
