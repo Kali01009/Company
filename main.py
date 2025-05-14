@@ -19,3 +19,7 @@ async def ws_endpoint(websocket: WebSocket, index: str):
     await websocket.accept()
     async for tick in subscribe_ticks(index):
         await websocket.send_text(tick)
+        
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))  # default to 5000 if PORT is not set
+    app.run(host='0.0.0.0', port=port)
