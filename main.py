@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 import websockets
-import asyncio
 import json
 
 app = FastAPI()
@@ -15,11 +16,15 @@ async def subscribe_ticks(index: str):
             yield msg
 
 @app.websocket("/ws/{index}")
-async def ws_endpoint(websocket: WebSocket, index: str):
+async def websocket_endpoint(websocket: WebSocket, index: str):
     await websocket.accept()
     async for tick in subscribe_ticks(index):
         await websocket.send_text(tick)
-        
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))  # default to 5000 if PORT is not set
-    app.run(host='0.0.0.0', port=port)
+
+# Serve static files in ./static folder
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+async def root():
+    # Redirect root URL to static/index.html
+    return RedirectResponse(url="/static/index.html")
