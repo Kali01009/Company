@@ -1,38 +1,32 @@
-import os
-import json
+from fastapi import FastAPI, WebSocket
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import asyncio
 import websockets
-from fastapi import FastAPI, WebSocket
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
-import uvicorn
+import json
 
 app = FastAPI()
 
-DERIV_WS = "wss://ws.derivws.com/websockets/v3?app_id=1089"
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
-async def subscribe_ticks(index: str):
-    async with websockets.connect(DERIV_WS) as ws:
-        await ws.send(json.dumps({"ticks": index, "subscribe": 1}))
-        while True:
-            msg = await ws.recv()
-            yield msg
+async def subscribe(ws, index):
+    msg = {
+        "ticks": index,
+        "subscribe": 1
+    }
+    await ws.send(json.dumps(msg))
 
 @app.websocket("/ws/{index}")
 async def websocket_endpoint(websocket: WebSocket, index: str):
     await websocket.accept()
-    try:
-        async for tick in subscribe_ticks(index):
-            await websocket.send_text(tick)
-    except Exception as e:
-        await websocket.close()
+    url = "wss://ws.binaryws.com/websockets/v3?app_id=1089"
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+    async with websockets.connect(url) as ws:
+        await subscribe(ws, index)
 
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/static/index.html")
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
+        try:
+            while True:
+                data = await ws.recv()
+                await websocket.send_text(data)
+        except Exception as e:
+            print("WebSocket error:", e)
