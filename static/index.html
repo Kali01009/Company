@@ -5,11 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Volatility Index - MT5 Style Chart</title>
 
-<!-- Chart.js core -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<!-- Chart.js Financial plugin -->
 <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@3.5.0/dist/chartjs-chart-financial.min.js"></script>
-<!-- Chart.js Zoom plugin -->
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
 
 <style>
@@ -70,7 +67,7 @@
 </div>
 
 <script>
-  // Chart.js config for candlestick chart with zoom/pan
+  // Chart.js candlestick chart setup
   const ctx = document.getElementById('chart').getContext('2d');
   const chart = new Chart(ctx, {
     type: 'candlestick',
@@ -87,12 +84,8 @@
         legend: { display: false },
         zoom: {
           zoom: {
-            wheel: {
-              enabled: true,
-            },
-            pinch: {
-              enabled: true
-            },
+            wheel: { enabled: true },
+            pinch: { enabled: true },
             mode: 'x',
           },
           pan: {
@@ -121,30 +114,33 @@
     }
   });
 
-  // Variables for candle aggregation (1 minute candles)
+  // Candle aggregation state
   let candles = [];
   let currentCandle = null;
+  let currentIndex = 'R_75';
+  let socket = null;
 
-  function resetCandles() {
-    candles = [];
-    currentCandle = null;
-    chart.data.datasets[0].data = candles;
-    chart.update();
-  }
-
-  // Convert tick to epoch minute key
+  // Helper: get minute bucket
   function getMinuteKey(epochSeconds) {
     return Math.floor(epochSeconds / 60);
   }
 
-  // Aggregate ticks into 1-minute candles
+  // Reset candles and chart
+  function resetCandles() {
+    candles = [];
+    currentCandle = null;
+    chart.data.datasets[0].data = [];
+    chart.update();
+  }
+
+  // Aggregate tick into OHLC candle
   function aggregateTick(tick) {
     const epoch = tick.epoch;
     const price = tick.quote;
     const minuteKey = getMinuteKey(epoch);
 
     if (!currentCandle || currentCandle.minuteKey !== minuteKey) {
-      // Push previous candle if exists
+      // Push previous candle
       if (currentCandle) {
         candles.push({
           x: new Date(currentCandle.minuteKey * 60 * 1000),
@@ -164,14 +160,14 @@
         close: price
       };
     } else {
-      // Update current candle
+      // Update candle
       currentCandle.high = Math.max(currentCandle.high, price);
       currentCandle.low = Math.min(currentCandle.low, price);
       currentCandle.close = price;
     }
   }
 
-  // Finalize candle on websocket close
+  // Finalize last candle before disconnect/reconnect
   function finalizeCandle() {
     if (currentCandle) {
       candles.push({
@@ -186,10 +182,7 @@
     }
   }
 
-  // WebSocket & UI logic
-  let socket;
-  let currentIndex = "R_75";
-
+  // Connect to WebSocket for given index
   function connectWS(index) {
     if (socket) {
       socket.close();
@@ -203,14 +196,19 @@
     const protocol = location.protocol === "https:" ? "wss" : "ws";
     socket = new WebSocket(`${protocol}://${location.host}/ws/${index}`);
 
+    socket.onopen = () => {
+      console.log(`WebSocket connected for ${index}`);
+    };
+
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.tick) {
         aggregateTick(data.tick);
-        // Update chart data with candles + current candle
-        const chartData = [...candles];
+
+        // Compose data with finalized candles + current
+        const dataSet = [...candles];
         if (currentCandle) {
-          chartData.push({
+          dataSet.push({
             x: new Date(currentCandle.minuteKey * 60 * 1000),
             o: currentCandle.open,
             h: currentCandle.high,
@@ -218,16 +216,17 @@
             c: currentCandle.close
           });
         }
-        chart.data.datasets[0].data = chartData;
-        chart.update('none'); // update with no animation
+        chart.data.datasets[0].data = dataSet;
+        chart.update('none');
       }
     };
 
-    socket.onerror = (err) => {
-      console.error('WebSocket error:', err);
+    socket.onerror = (e) => {
+      console.error("WebSocket error:", e);
     };
 
-    socket.onclose = () => {
+    socket.onclose = (e) => {
+      console.log("WebSocket closed:", e.reason);
       finalizeCandle();
       chart.update();
     };
@@ -235,13 +234,17 @@
 
   // Setup toggle buttons
   document.getElementById('btn_R_75').addEventListener('click', () => {
-    setActiveButton('btn_R_75');
-    connectWS('R_75');
+    if (currentIndex !== 'R_75') {
+      setActiveButton('btn_R_75');
+      connectWS('R_75');
+    }
   });
 
   document.getElementById('btn_R_25').addEventListener('click', () => {
-    setActiveButton('btn_R_25');
-    connectWS('R_25');
+    if (currentIndex !== 'R_25') {
+      setActiveButton('btn_R_25');
+      connectWS('R_25');
+    }
   });
 
   function setActiveButton(id) {
@@ -250,7 +253,7 @@
     document.getElementById(id).classList.add('active');
   }
 
-  // Initial connection
+  // Start first connection
   connectWS(currentIndex);
 </script>
 
