@@ -1,50 +1,21 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Volatility Index Realtime</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body>
-    <h2>Volatility Index <span id="index">R_75</span></h2>
-    <canvas id="chart" width="600" height="400"></canvas>
+from fastapi import FastAPI, WebSocket
+import websockets
+import asyncio
+import json
 
-    <script>
-        const index = "R_75";
-        const socket = new WebSocket(`ws://localhost:8000/ws/${index}`);
+app = FastAPI()
 
-        const ctx = document.getElementById('chart').getContext('2d');
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Price',
-                    data: [],
-                    borderColor: 'blue',
-                    borderWidth: 1,
-                    fill: false,
-                }]
-            },
-            options: {
-                scales: {
-                    x: { display: false },
-                    y: { beginAtZero: false }
-                }
-            }
-        });
+DERIV_WS = "wss://ws.derivws.com/websockets/v3?app_id=1089"
 
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.tick) {
-                chart.data.labels.push(new Date(data.tick.epoch * 1000).toLocaleTimeString());
-                chart.data.datasets[0].data.push(data.tick.quote);
-                if (chart.data.labels.length > 30) {
-                    chart.data.labels.shift();
-                    chart.data.datasets[0].data.shift();
-                }
-                chart.update();
-            }
-        };
-    </script>
-</body>
-</html>
+async def subscribe_ticks(index: str):
+    async with websockets.connect(DERIV_WS) as ws:
+        await ws.send(json.dumps({"ticks": index, "subscribe": 1}))
+        while True:
+            msg = await ws.recv()
+            yield msg
+
+@app.websocket("/ws/{index}")
+async def ws_endpoint(websocket: WebSocket, index: str):
+    await websocket.accept()
+    async for tick in subscribe_ticks(index):
+        await websocket.send_text(tick)
