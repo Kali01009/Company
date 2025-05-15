@@ -1,78 +1,48 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Volatility Index Candlestick Chart</title>
+    <title>Volatility Index Realtime</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
 </head>
 <body>
-    <h2>Candlestick Chart - Volatility Index 75</h2>
-    <canvas id="chart" width="800" height="400"></canvas>
+    <h2>Volatility Index <span id="index">R_75</span></h2>
+    <canvas id="chart" width="600" height="400"></canvas>
 
     <script>
         const index = "R_75";
-        const socket = new WebSocket(`ws://${location.host}/ws/${index}`);
+        // Dynamically choose ws or wss based on current protocol & host
+        const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${index}`);
 
         const ctx = document.getElementById('chart').getContext('2d');
-        let candles = [];
-
         const chart = new Chart(ctx, {
-            type: 'candlestick',
+            type: 'line',
             data: {
+                labels: [],
                 datasets: [{
-                    label: `${index} 1m`,
-                    data: candles
+                    label: 'Price',
+                    data: [],
+                    borderColor: 'blue',
+                    borderWidth: 1,
+                    fill: false,
                 }]
             },
             options: {
-                parsing: false,
                 scales: {
-                    x: {
-                        type: 'time',
-                        time: {
-                            unit: 'minute'
-                        }
-                    }
+                    x: { display: false },
+                    y: { beginAtZero: false }
                 }
             }
         });
 
-        socket.onmessage = function(event) {
-            const msg = JSON.parse(event.data);
-            if (msg.type === "historical") {
-                candles = msg.candles.map(c => ({
-                    x: new Date(c.epoch * 1000),
-                    o: c.open,
-                    h: c.high,
-                    l: c.low,
-                    c: c.close
-                }));
-                chart.data.datasets[0].data = candles;
-                chart.update();
-            } else if (msg.type === "tick") {
-                const tick = msg.tick.tick;
-                const tickTime = new Date(tick.epoch * 1000);
-                const last = candles[candles.length - 1];
-
-                // If still in same minute, update current candle
-                if (last && Math.floor(tickTime.getTime() / 60000) === Math.floor(last.x.getTime() / 60000)) {
-                    last.h = Math.max(last.h, tick.quote);
-                    last.l = Math.min(last.l, tick.quote);
-                    last.c = tick.quote;
-                } else {
-                    // Else push new candle
-                    candles.push({
-                        x: tickTime,
-                        o: tick.quote,
-                        h: tick.quote,
-                        l: tick.quote,
-                        c: tick.quote
-                    });
-
-                    if (candles.length > 100) candles.shift();
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.tick) {
+                chart.data.labels.push(new Date(data.tick.epoch * 1000).toLocaleTimeString());
+                chart.data.datasets[0].data.push(data.tick.quote);
+                if (chart.data.labels.length > 30) {
+                    chart.data.labels.shift();
+                    chart.data.datasets[0].data.shift();
                 }
-
                 chart.update();
             }
         };
