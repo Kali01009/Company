@@ -3,12 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <title>Volatility Index Realtime</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <h2>Volatility Index <span id="index">R_75</span></h2>
-    <canvas id="chart" width="600" height="400"></canvas>
+    <div class="chart-container">
+        <canvas id="chart"></canvas>
+    </div>
 
     <script>
         const index = "R_75";
