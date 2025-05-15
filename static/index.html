@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Volatility Index Realtime</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h2>Volatility Index <span id="index">R_75</span></h2>
+    <canvas id="chart" width="600" height="400"></canvas>
+
+    <script>
+        const index = "R_75";
+        const socket = new WebSocket(`ws://localhost:8000/ws/${index}`);
+
+        const ctx = document.getElementById('chart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Price',
+                    data: [],
+                    borderColor: 'blue',
+                    borderWidth: 1,
+                    fill: false,
+                }]
+            },
+            options: {
+                scales: {
+                    x: { display: false },
+                    y: { beginAtZero: false }
+                }
+            }
+        });
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.tick) {
+                chart.data.labels.push(new Date(data.tick.epoch * 1000).toLocaleTimeString());
+                chart.data.datasets[0].data.push(data.tick.quote);
+                if (chart.data.labels.length > 30) {
+                    chart.data.labels.shift();
+                    chart.data.datasets[0].data.shift();
+                }
+                chart.update();
+            }
+        };
+    </script>
+</body>
+</html>
