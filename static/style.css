@@ -1,5 +1,3 @@
-/* static/style.css */
-
 body {
   background-color: #1e1e1e;
   color: #ffffff;
@@ -18,22 +16,23 @@ h2 {
   text-align: center;
 }
 
-/* Wrapper allows horizontal scrolling */
+/* Wrapper enables horizontal scroll for older candles */
 .chart-scroll-wrapper {
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
-  width: 100%;
+  width: 75%; /* Chart takes 75% width of viewport */
   height: 75vh; /* 75% viewport height */
+  margin: 0 auto;
   border: 2px solid #2c2c2c;
   border-radius: 8px;
   box-shadow: 0 0 10px #00ffcc44;
   background: #121212;
 }
 
-/* Chart container fixed width for scroll */
+/* Container extended width for horizontal scroll */
 .chart-container {
-  width: 2000px; /* Extend width for horizontal scroll */
+  width: 2000px; /* wide to enable horizontal scrolling */
   height: 100%;
 }
 
