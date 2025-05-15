@@ -3,4 +3,3 @@ uvicorn
 websockets
 aiohttp
 numpy
-chart.js
