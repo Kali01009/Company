@@ -7,15 +7,26 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    height: 100vh;
+    justify-content: flex-start;
+    padding: 20px;
     margin: 0;
+    min-height: 100vh;
+    box-sizing: border-box;
 }
 
 h2 {
-    margin-bottom: 20px;
-    font-size: 24px;
+    margin: 10px 0 20px;
+    font-size: 1.5rem;
     color: #00ffcc;
+    text-align: center;
+}
+
+.chart-container {
+    width: 100%;
+    max-width: 600px;
+    height: 60vh;
+    padding: 10px;
+    box-sizing: border-box;
 }
 
 canvas {
@@ -23,7 +34,8 @@ canvas {
     border: 2px solid #2c2c2c;
     border-radius: 8px;
     box-shadow: 0 0 10px #00ffcc44;
-    max-width: 90vw;
+    width: 100% !important;
+    height: 100% !important;
     animation: fadeIn 1s ease-in-out;
 }
 
