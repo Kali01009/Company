@@ -1,52 +1,36 @@
-import os
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import RedirectResponse
 import websockets
-import asyncio
 import json
+import os
 import uvicorn
-import aiohttp
 
 app = FastAPI()
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+DERIV_WS = "wss://ws.derivws.com/websockets/v3?app_id=1089"
 
-@app.get("/")
-async def get_index():
-    return FileResponse("static/index.html")
-
-async def fetch_historical_candles(index: str):
-    url = "https://api.deriv.com/api/websockets/v3"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            f"https://deriv-api.binary.com/exchange/ticks?index={index}&count=100&style=candles&granularity=60"
-        ) as response:
-            data = await response.json()
-            return data["candles"] if "candles" in data else []
+async def subscribe_ticks(index: str):
+    async with websockets.connect(DERIV_WS) as ws:
+        await ws.send(json.dumps({"ticks": index, "subscribe": 1}))
+        while True:
+            msg = await ws.recv()
+            yield msg
 
 @app.websocket("/ws/{index}")
 async def websocket_endpoint(websocket: WebSocket, index: str):
     await websocket.accept()
-    
-    # Send historical data first
-    candles = await fetch_historical_candles(index)
-    await websocket.send_text(json.dumps({"type": "historical", "candles": candles}))
+    async for tick in subscribe_ticks(index):
+        await websocket.send_text(tick)
 
-    # Start WebSocket connection for live ticks
-    async with websockets.connect("wss://ws.binaryws.com/websockets/v3?app_id=1089") as ws:
-        await ws.send(json.dumps({
-            "ticks": index,
-            "subscribe": 1
-        }))
+# Serve static files from the ./static folder
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-        try:
-            while True:
-                tick = await ws.recv()
-                await websocket.send_text(json.dumps({"type": "tick", "tick": json.loads(tick)}))
-        except Exception as e:
-            print("WebSocket error:", e)
+@app.get("/")
+async def root():
+    # Redirect root path to /static/index.html
+    return RedirectResponse(url="/static/index.html")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 8000))  # Use Render's PORT or default 8000
     uvicorn.run("main:app", host="0.0.0.0", port=port)
