@@ -1,15 +1,14 @@
 import asyncio
-import json
 import websockets
-from datetime import datetime
 from analyzer import Analyzer
+from datetime import datetime
+import json
 
 analyzer = Analyzer()
 
 async def handler(websocket, path):
-    index = path.strip("/").split("/")[-1]  # e.g. /ws/R_75
+    index = path.strip("/").split("/")[-1]
     while True:
-        # Simulate receiving a live tick (replace with real source)
         quote = simulate_live_price()
         timestamp = int(datetime.utcnow().timestamp())
 
@@ -26,7 +25,10 @@ def simulate_live_price():
     from random import uniform
     return round(100 + uniform(-1, 1), 4)
 
-start_server = websockets.serve(handler, "localhost", 8000)
+async def main():
+    async with websockets.serve(handler, "0.0.0.0", 8000):  # Use 0.0.0.0 in production
+        print("WebSocket server started on port 8000")
+        await asyncio.Future()  # Run forever
 
-asyncio.get_event_loop().run_until_complete(start_server)
-asyncio.get_event_loop().run_forever()
+if __name__ == "__main__":
+    asyncio.run(main())
