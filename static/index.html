@@ -1,8 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Volatility Index Realtime</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <h2>Volatility Index <span id="index">R_75</span></h2>
@@ -10,7 +12,6 @@
 
     <script>
         const index = "R_75";
-        // Dynamically choose ws or wss based on current protocol & host
         const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${index}`);
 
         const ctx = document.getElementById('chart').getContext('2d');
@@ -21,15 +22,34 @@
                 datasets: [{
                     label: 'Price',
                     data: [],
-                    borderColor: 'blue',
-                    borderWidth: 1,
-                    fill: false,
+                    borderColor: '#00ffcc',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 0,
                 }]
             },
             options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 scales: {
-                    x: { display: false },
-                    y: { beginAtZero: false }
+                    x: {
+                        display: true,
+                        ticks: { color: '#ccc' },
+                        grid: { color: '#333' }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        ticks: { color: '#ccc' },
+                        grid: { color: '#333' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#00ffcc',
+                            font: { size: 14 }
+                        }
+                    }
                 }
             }
         });
